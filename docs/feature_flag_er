@@ -1,0 +1,80 @@
+                    FEATURE FLAG MANAGEMENT SYSTEM
+                           ER DIAGRAM
+
+
++-----------------------+
+|     ENVIRONMENTS      |
++-----------------------+
+| PK id                 |
+| name                  |
+| description           |
+| created_at            |
+| updated_at            |
++-----------------------+
+           |
+           | 1
+           |
+           | has many
+           |
+           | N
++-----------------------+
+|         FLAGS         |
++-----------------------+
+| PK id                 |
+| FK environment_id     |
+| flag_key              |
+| flag_name             |
+| description           |
+| flag_type             |
+| default_value         |
+| enabled               |
+| owner_team            |
+| created_at            |
+| updated_at            |
++-----------------------+
+      |                     |
+      |1                    |1
+      |                     |
+      |has many             |has many
+      |                     |
+      |N                    |N
+      |                     |
+      ▼                     ▼
+
++-----------------------+      +--------------------------+
+|    FLAG_VERSIONS      |      |    TARGETING_RULES       |
++-----------------------+      +--------------------------+
+| PK id                 |      | PK id                   |
+| FK flag_id            |      | FK flag_id              |
+| version_number        |      | rule_priority           |
+| value                 |      | rule_type               |
+| change_description    |      | target_value            |
+| created_at            |      | percentage              |
++-----------------------+      | enabled                 |
+                               | created_at              |
+                               | updated_at              |
+                               +--------------------------+
+
+
++--------------------------------------+
+|     USER_GROUP_MEMBERSHIPS           |
++--------------------------------------+
+| PK id                                |
+| user_id                              |
+| group_name                           |
+| created_at                           |
++--------------------------------------+
+
+
++--------------------------------------+
+|            AUDIT_LOGS                |
++--------------------------------------+
+| PK id                                |
+| actor                                |
+| action                               |
+| table_name                           |
+| record_id                            |
+| previous_data                        |
+| new_data                             |
+| timestamp                            |
++--------------------------------------+
