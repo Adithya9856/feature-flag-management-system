@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -18,6 +18,14 @@ class Flag(Base):
 
     __tablename__ = "flags"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "environment_id",
+            "flag_key",
+            name="uq_flags_environment_id_flag_key",
+        ),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
 
     environment_id: Mapped[int] = mapped_column(
@@ -29,7 +37,6 @@ class Flag(Base):
     flag_key: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
-        unique=True,
         index=True,
     )
 
