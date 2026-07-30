@@ -8,6 +8,7 @@ def evaluate_flag(
     db: Session,
     flag_key: str,
     environment_name: str,
+    user_context: dict | None = None,
 ):
     # Find the environment
     environment = (
@@ -38,17 +39,12 @@ def evaluate_flag(
             "message": "Flag not found",
         }
 
-    if flag.enabled:
-        return {
-            "success": True,
-            "flag": flag.flag_key,
-            "enabled": True,
-            "value": flag.default_value,
-        }
-
     return {
         "success": True,
+        "environment": environment.name,
         "flag": flag.flag_key,
-        "enabled": False,
-        "value": None,
+        "type": flag.flag_type,
+        "enabled": flag.enabled,
+        "value": flag.default_value,
+        "user_context": user_context,
     }
