@@ -13,8 +13,7 @@ def test_default_value_fallback():
     )
 
     assert result["success"] is True
-    assert result["value"] == "true"  # Assuming the default value for dark_mode is "true"
-
+    assert result["value"] == "true"  
     db.close()
 
 
