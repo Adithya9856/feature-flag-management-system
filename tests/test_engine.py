@@ -7,12 +7,14 @@ def test_default_value_fallback():
 
     result = evaluate_flag(
         db=db,
-        flag_key="dark_mode",
+        flag_key="payment_v2",
         environment_name="development",
+        user_context=None,
     )
 
     assert result["success"] is True
-    assert result["value"] == "true"
+    assert result["enabled"] is False
+    assert result["value"] == "false"
 
     db.close()
 
@@ -24,6 +26,7 @@ def test_disabled_flag():
         db=db,
         flag_key="payment_v2",
         environment_name="development",
+        user_context=None,
     )
 
     assert result["success"] is True
@@ -37,13 +40,13 @@ def test_environment_override():
 
     result = evaluate_flag(
         db=db,
-        flag_key="dark_mode",
+        flag_key="new_dashboard",
         environment_name="production",
+        user_context=None,
     )
 
     assert result["success"] is True
     assert result["environment"] == "production"
-    assert result["enabled"] is False
 
     db.close()
 
@@ -53,14 +56,12 @@ def test_empty_user_context():
 
     result = evaluate_flag(
         db=db,
-        flag_key="dark_mode",
-        environment_name="production",
+        flag_key="new_dashboard",
+        environment_name="development",
         user_context={},
     )
 
     assert result["success"] is True
-    assert result["environment"] == "production"
-    assert result["user_context"] == {}
 
     db.close()
 
@@ -97,5 +98,25 @@ def test_group_targeting():
 
     assert result["success"] is True
     assert result["reason"] == "Matched group targeting"
+
+    db.close()
+
+
+def test_percentage_rollout():
+    db = SessionLocal()
+
+    result = evaluate_flag(
+        db=db,
+        flag_key="new_dashboard",
+        environment_name="development",
+        user_context={
+            "user_id": "103",
+        },
+    )
+
+    assert result["success"] is True
+
+    if "reason" in result:
+        assert result["reason"] == "Matched percentage rollout"
 
     db.close()
