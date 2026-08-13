@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from sqlalchemy import text
 
-from app.database.connection import engine
+from app.api.flag_routes import router
+
 
 app = FastAPI(
     title="Feature Flag Management System",
@@ -11,17 +11,9 @@ app = FastAPI(
 
 @app.get("/")
 def home():
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+    return {
+        "message": "Feature flag management system running"
+    }
 
-        return {
-            "message": "Welcome to the Feature Flag Management System",
-            "database": "Connected successfully"
-        }
 
-    except Exception as e:
-        return {
-            "message": "Database connection failed",
-            "error": str(e)
-        }
+app.include_router(router)
