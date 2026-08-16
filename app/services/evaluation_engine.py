@@ -1,5 +1,8 @@
+import json
+
 from sqlalchemy.orm import Session
 
+from app.cache.redis_client import redis_client
 from app.models.environment import Environment
 from app.models.flag import Flag
 from app.models.targeting_rule import TargetingRule
@@ -42,10 +45,31 @@ def evaluate_flag(
             "message": "Flag not found",
         }
 
-    # User Targeting
-    if user_context:
+    # Create a user-specific Redis cache key
+    if user_context and user_context.get("user_id") is not None:
         user_id = str(user_context.get("user_id"))
 
+        cache_key = (
+            f"flag:{environment.name}:"
+            f"{flag.flag_key}:"
+            f"user:{user_id}"
+        )
+    else:
+        user_id = None
+
+        cache_key = (
+            f"flag:{environment.name}:"
+            f"{flag.flag_key}:default"
+        )
+
+    # Check Redis cache
+    cached_result = redis_client.get(cache_key)
+
+    if cached_result is not None:
+        return json.loads(cached_result)
+
+    # User Targeting
+    if user_id is not None:
         rule = (
             db.query(TargetingRule)
             .filter(
@@ -59,7 +83,7 @@ def evaluate_flag(
         )
 
         if rule:
-            return {
+            result = {
                 "success": True,
                 "environment": environment.name,
                 "flag": flag.flag_key,
@@ -70,10 +94,17 @@ def evaluate_flag(
                 "user_context": user_context,
             }
 
-    # Group Targeting
-    if user_context:
-        user_id = str(user_context.get("user_id"))
+            # Store user targeting result in Redis
+            redis_client.set(
+                cache_key,
+                json.dumps(result),
+                ex=300,
+            )
 
+            return result
+
+    # Group Targeting
+    if user_id is not None:
         group = (
             db.query(UserGroupMembership)
             .filter(
@@ -96,7 +127,7 @@ def evaluate_flag(
             )
 
             if group_rule:
-                return {
+                result = {
                     "success": True,
                     "environment": environment.name,
                     "flag": flag.flag_key,
@@ -107,10 +138,17 @@ def evaluate_flag(
                     "user_context": user_context,
                 }
 
-    # Percentage Rollout
-    if user_context:
-        user_id = str(user_context.get("user_id"))
+                # Store group targeting result in Redis
+                redis_client.set(
+                    cache_key,
+                    json.dumps(result),
+                    ex=300,
+                )
 
+                return result
+
+    # Percentage Rollout
+    if user_id is not None:
         percentage_rule = (
             db.query(TargetingRule)
             .filter(
@@ -127,7 +165,7 @@ def evaluate_flag(
                 flag_key=flag.flag_key,
                 rollout_percentage=percentage_rule.percentage,
             ):
-                return {
+                result = {
                     "success": True,
                     "environment": environment.name,
                     "flag": flag.flag_key,
@@ -138,8 +176,17 @@ def evaluate_flag(
                     "user_context": user_context,
                 }
 
+                # Store percentage rollout result in Redis
+                redis_client.set(
+                    cache_key,
+                    json.dumps(result),
+                    ex=300,
+                )
+
+                return result
+
     # Default Evaluation
-    return {
+    result = {
         "success": True,
         "environment": environment.name,
         "flag": flag.flag_key,
@@ -148,3 +195,12 @@ def evaluate_flag(
         "value": flag.default_value,
         "user_context": user_context,
     }
+
+    # Store default evaluation result in Redis
+    redis_client.set(
+        cache_key,
+        json.dumps(result),
+        ex=300,
+    )
+
+    return result

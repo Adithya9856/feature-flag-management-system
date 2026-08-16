@@ -17,11 +17,16 @@ from app.schemas.evaluation import EvaluationRequest
 
 from app.services.evaluation_engine import evaluate_flag
 
+# Redis
+from app.cache.redis_client import redis_client
+
 
 router = APIRouter()
 
 
-# Flag APIs
+# ============================================================
+# FLAG APIs
+# ============================================================
 
 # Get all flags
 @router.get("/flags")
@@ -95,6 +100,7 @@ def update_flag(
             detail="Flag not found",
         )
 
+    # Update flag fields
     flag.flag_name = request.flag_name
     flag.description = request.description
     flag.flag_type = request.flag_type
@@ -102,7 +108,16 @@ def update_flag(
     flag.enabled = request.enabled
     flag.owner_team = request.owner_team
 
+    # Save changes to PostgreSQL
     db.commit()
+
+    # --------------------------------------------------------
+    # Redis Cache Invalidation
+    # --------------------------------------------------------
+    cache_key = f"{flag.environment.name}:{flag.flag_key}"
+    redis_client.delete(cache_key)
+
+    # Refresh object from database
     db.refresh(flag)
 
     return flag
@@ -126,15 +141,28 @@ def delete_flag(
             detail="Flag not found",
         )
 
+    # --------------------------------------------------------
+    # Save cache key before deleting the database object
+    # --------------------------------------------------------
+    cache_key = f"{flag.environment.name}:{flag.flag_key}"
+
+    # Delete flag from PostgreSQL
     db.delete(flag)
     db.commit()
+
+    # --------------------------------------------------------
+    # Redis Cache Invalidation
+    # --------------------------------------------------------
+    redis_client.delete(cache_key)
 
     return {
         "message": "Flag deleted successfully"
     }
 
 
-# Environment APIs
+# ============================================================
+# ENVIRONMENT APIs
+# ============================================================
 
 # Get all environments
 @router.get("/environments")
@@ -235,7 +263,9 @@ def delete_environment(
     }
 
 
-# Targeting Rule APIs
+# ============================================================
+# TARGETING RULE APIs
+# ============================================================
 
 # Get all targeting rules
 @router.get("/targeting-rules")
@@ -347,7 +377,9 @@ def delete_targeting_rule(
     }
 
 
-# Flag Evaluation API
+# ============================================================
+# FLAG EVALUATION API
+# ============================================================
 
 # Evaluate a feature flag
 @router.post("/evaluate")
