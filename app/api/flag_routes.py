@@ -1,3 +1,4 @@
+from app.services.audit_service import create_audit_log
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,7 @@ from app.services.evaluation_engine import evaluate_flag
 
 # Redis
 from app.cache.redis_client import redis_client
-
+from app.services.flag_cleanup_service import find_cleanup_candidates
 
 router = APIRouter()
 
@@ -54,11 +55,39 @@ def create_flag(
     )
 
     db.add(flag)
+    db.flush()
+
+    environment = (
+        db.query(Environment)
+        .filter(Environment.id == flag.environment_id)
+        .first()
+    )
+
+    new_data = {
+        "environment": environment.name if environment else None,
+        "flag_key": flag.flag_key,
+        "flag_name": flag.flag_name,
+        "description": flag.description,
+        "flag_type": flag.flag_type,
+        "default_value": flag.default_value,
+        "enabled": flag.enabled,
+        "owner_team": flag.owner_team,
+    }
+
+    create_audit_log(
+        db=db,
+        actor="system",
+        action="CREATE",
+        table_name="flags",
+        record_id=str(flag.id),
+        previous_data=None,
+        new_data=new_data,
+    )
+
     db.commit()
     db.refresh(flag)
 
     return flag
-
 
 # Get a flag by ID
 @router.get("/flags/{flag_id}")
@@ -100,7 +129,26 @@ def update_flag(
             detail="Flag not found",
         )
 
-    # Update flag fields
+    environment = (
+        db.query(Environment)
+        .filter(Environment.id == flag.environment_id)
+        .first()
+    )
+
+    previous_data = {
+        "environment": environment.name if environment else None,
+        "flag_key": flag.flag_key,
+        "flag_name": flag.flag_name,
+        "description": flag.description,
+        "flag_type": flag.flag_type,
+        "default_value": flag.default_value,
+        "enabled": flag.enabled,
+        "owner_team": flag.owner_team,
+    }
+
+    old_enabled = flag.enabled
+
+    # Update flag
     flag.flag_name = request.flag_name
     flag.description = request.description
     flag.flag_type = request.flag_type
@@ -108,16 +156,41 @@ def update_flag(
     flag.enabled = request.enabled
     flag.owner_team = request.owner_team
 
-    # Save changes to PostgreSQL
+    new_data = {
+        "environment": environment.name if environment else None,
+        "flag_key": flag.flag_key,
+        "flag_name": flag.flag_name,
+        "description": flag.description,
+        "flag_type": flag.flag_type,
+        "default_value": flag.default_value,
+        "enabled": flag.enabled,
+        "owner_team": flag.owner_team,
+    }
+
+    # Detect enable or disable
+    if old_enabled is False and flag.enabled is True:
+        action = "ENABLE"
+    elif old_enabled is True and flag.enabled is False:
+        action = "DISABLE"
+    else:
+        action = "UPDATE"
+
+    create_audit_log(
+        db=db,
+        actor="system",
+        action=action,
+        table_name="flags",
+        record_id=str(flag.id),
+        previous_data=previous_data,
+        new_data=new_data,
+    )
+
     db.commit()
 
-    # --------------------------------------------------------
-    # Redis Cache Invalidation
-    # --------------------------------------------------------
-    cache_key = f"{flag.environment.name}:{flag.flag_key}"
+    # Invalidate Redis cache
+    cache_key = f"{environment.name}:{flag.flag_key}"
     redis_client.delete(cache_key)
 
-    # Refresh object from database
     db.refresh(flag)
 
     return flag
@@ -261,8 +334,6 @@ def delete_environment(
     return {
         "message": "Environment deleted successfully"
     }
-
-
 # ============================================================
 # TARGETING RULE APIs
 # ============================================================
@@ -292,6 +363,46 @@ def create_targeting_rule(
     )
 
     db.add(rule)
+    db.flush()
+
+    # Find the flag and environment
+    flag = (
+        db.query(Flag)
+        .filter(Flag.id == rule.flag_id)
+        .first()
+    )
+
+    environment = None
+
+    if flag:
+        environment = (
+            db.query(Environment)
+            .filter(Environment.id == flag.environment_id)
+            .first()
+        )
+
+    new_data = {
+        "environment": environment.name if environment else None,
+        "flag_id": rule.flag_id,
+        "rule_priority": rule.rule_priority,
+        "attribute": rule.attribute,
+        "operator": rule.operator,
+        "target_value": rule.target_value,
+        "percentage": rule.percentage,
+        "enabled": rule.enabled,
+    }
+
+    # Create audit log
+    create_audit_log(
+        db=db,
+        actor="system",
+        action="CREATE",
+        table_name="targeting_rules",
+        record_id=str(rule.id),
+        previous_data=None,
+        new_data=new_data,
+    )
+
     db.commit()
     db.refresh(rule)
 
@@ -338,12 +449,64 @@ def update_targeting_rule(
             detail="Targeting rule not found",
         )
 
+    # Find the flag and environment
+    flag = (
+        db.query(Flag)
+        .filter(Flag.id == rule.flag_id)
+        .first()
+    )
+
+    environment = None
+
+    if flag:
+        environment = (
+            db.query(Environment)
+            .filter(Environment.id == flag.environment_id)
+            .first()
+        )
+
+    # Save previous state
+    previous_data = {
+        "environment": environment.name if environment else None,
+        "flag_id": rule.flag_id,
+        "rule_priority": rule.rule_priority,
+        "attribute": rule.attribute,
+        "operator": rule.operator,
+        "target_value": rule.target_value,
+        "percentage": rule.percentage,
+        "enabled": rule.enabled,
+    }
+
+    # Update targeting rule
     rule.rule_priority = request.rule_priority
     rule.attribute = request.attribute
     rule.operator = request.operator
     rule.target_value = request.target_value
     rule.percentage = request.percentage
     rule.enabled = request.enabled
+
+    # Save new state
+    new_data = {
+        "environment": environment.name if environment else None,
+        "flag_id": rule.flag_id,
+        "rule_priority": rule.rule_priority,
+        "attribute": rule.attribute,
+        "operator": rule.operator,
+        "target_value": rule.target_value,
+        "percentage": rule.percentage,
+        "enabled": rule.enabled,
+    }
+
+    # Create audit log
+    create_audit_log(
+        db=db,
+        actor="system",
+        action="UPDATE",
+        table_name="targeting_rules",
+        record_id=str(rule.id),
+        previous_data=previous_data,
+        new_data=new_data,
+    )
 
     db.commit()
     db.refresh(rule)
@@ -369,14 +532,51 @@ def delete_targeting_rule(
             detail="Targeting rule not found",
         )
 
+    # Find the flag and environment
+    flag = (
+        db.query(Flag)
+        .filter(Flag.id == rule.flag_id)
+        .first()
+    )
+
+    environment = None
+
+    if flag:
+        environment = (
+            db.query(Environment)
+            .filter(Environment.id == flag.environment_id)
+            .first()
+        )
+
+    # Save state before deletion
+    previous_data = {
+        "environment": environment.name if environment else None,
+        "flag_id": rule.flag_id,
+        "rule_priority": rule.rule_priority,
+        "attribute": rule.attribute,
+        "operator": rule.operator,
+        "target_value": rule.target_value,
+        "percentage": rule.percentage,
+        "enabled": rule.enabled,
+    }
+
+    # Create audit log before deleting the rule
+    create_audit_log(
+        db=db,
+        actor="system",
+        action="DELETE",
+        table_name="targeting_rules",
+        record_id=str(rule.id),
+        previous_data=previous_data,
+        new_data=None,
+    )
+
     db.delete(rule)
     db.commit()
 
     return {
         "message": "Targeting rule deleted successfully"
     }
-
-
 # ============================================================
 # FLAG EVALUATION API
 # ============================================================
@@ -393,3 +593,22 @@ def evaluate(
         environment_name=request.environment_name,
         user_context=request.user_context,
     )
+@router.get("/cleanup/flags")
+def get_cleanup_candidates(
+    days: int = 30,
+    db: Session = Depends(get_db),
+):
+    if days < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="days must be at least 1",
+        )
+
+    return {
+        "days": days,
+        "candidates": find_cleanup_candidates(
+            db=db,
+            days=days,
+        ),
+    }
+    
