@@ -1,3 +1,4 @@
+import json
 from app.services.audit_service import create_audit_log
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -635,6 +636,8 @@ def get_evaluation_analytics(
     ]
 @router.get("/audit-logs")
 def get_audit_logs(
+    actor: str | None = None,
+    flag_key: str | None = None,
     db: Session = Depends(get_db),
 ):
     logs = (
@@ -643,4 +646,120 @@ def get_audit_logs(
         .all()
     )
 
-    return logs
+    results = []
+
+    for log in logs:
+        previous_data = None
+        new_data = None
+
+        if log.previous_data:
+            try:
+                previous_data = json.loads(
+                    log.previous_data
+                )
+            except json.JSONDecodeError:
+                previous_data = None
+
+        if log.new_data:
+            try:
+                new_data = json.loads(
+                    log.new_data
+                )
+            except json.JSONDecodeError:
+                new_data = None
+
+        # Get flag information from either
+        # previous or new state.
+        flag_key_value = None
+        environment_value = None
+
+        for data in (
+            new_data,
+            previous_data,
+        ):
+            if not data:
+                continue
+
+            if flag_key_value is None:
+                flag_key_value = data.get(
+                    "flag_key"
+                )
+
+            if environment_value is None:
+                environment_value = data.get(
+                    "environment"
+                )
+
+        # Targeting-rule audit records contain
+        # flag_id instead of flag_key.
+        if flag_key_value is None:
+            flag_id = None
+
+            for data in (
+                new_data,
+                previous_data,
+            ):
+                if data and data.get("flag_id"):
+                    flag_id = data.get(
+                        "flag_id"
+                    )
+                    break
+
+            if flag_id is not None:
+                flag = (
+                    db.query(Flag)
+                    .filter(
+                        Flag.id == flag_id
+                    )
+                    .first()
+                )
+
+                if flag:
+                    flag_key_value = (
+                        flag.flag_key
+                    )
+
+                    environment = (
+                        db.query(Environment)
+                        .filter(
+                            Environment.id
+                            == flag.environment_id
+                        )
+                        .first()
+                    )
+
+                    if environment:
+                        environment_value = (
+                            environment.name
+                        )
+
+        # Actor filter
+        if (
+            actor is not None
+            and log.actor != actor
+        ):
+            continue
+
+        # Flag filter
+        if (
+            flag_key is not None
+            and flag_key_value != flag_key
+        ):
+            continue
+
+        results.append(
+            {
+                "id": log.id,
+                "actor": log.actor,
+                "flag_key": flag_key_value,
+                "environment": environment_value,
+                "action": log.action,
+                "table_name": log.table_name,
+                "record_id": log.record_id,
+                "previous_data": log.previous_data,
+                "new_data": log.new_data,
+                "timestamp": log.timestamp,
+            }
+        )
+
+    return results

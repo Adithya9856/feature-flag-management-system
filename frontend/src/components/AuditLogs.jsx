@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getAuditLogs } from "../services/api";
 
@@ -12,6 +12,12 @@ function AuditLogs() {
         useState("ALL");
 
     const [tableFilter, setTableFilter] =
+        useState("ALL");
+
+    const [actorFilter, setActorFilter] =
+        useState("ALL");
+
+    const [flagFilter, setFlagFilter] =
         useState("ALL");
 
 
@@ -43,38 +49,95 @@ function AuditLogs() {
     };
 
 
-    const actions = [
-        "ALL",
-        ...new Set(
-            logs.map((log) => log.action)
-        ),
-    ];
+    const actions = useMemo(() => {
+        return [
+            "ALL",
+            ...new Set(
+                logs.map(
+                    (log) => log.action
+                )
+            ),
+        ];
+    }, [logs]);
 
 
-    const tables = [
-        "ALL",
-        ...new Set(
-            logs.map((log) => log.table_name)
-        ),
-    ];
+    const tables = useMemo(() => {
+        return [
+            "ALL",
+            ...new Set(
+                logs.map(
+                    (log) => log.table_name
+                )
+            ),
+        ];
+    }, [logs]);
 
 
-    const filteredLogs = logs.filter(
-        (log) => {
+    const actors = useMemo(() => {
+        return [
+            "ALL",
+            ...new Set(
+                logs
+                    .map(
+                        (log) => log.actor
+                    )
+                    .filter(Boolean)
+            ),
+        ];
+    }, [logs]);
+
+
+    const flags = useMemo(() => {
+        return [
+            "ALL",
+            ...new Set(
+                logs
+                    .map(
+                        (log) => log.flag_key
+                    )
+                    .filter(Boolean)
+            ),
+        ];
+    }, [logs]);
+
+
+    const filteredLogs = useMemo(() => {
+        return logs.filter((log) => {
+
             const actionMatches =
                 actionFilter === "ALL" ||
                 log.action === actionFilter;
+
 
             const tableMatches =
                 tableFilter === "ALL" ||
                 log.table_name === tableFilter;
 
+
+            const actorMatches =
+                actorFilter === "ALL" ||
+                log.actor === actorFilter;
+
+
+            const flagMatches =
+                flagFilter === "ALL" ||
+                log.flag_key === flagFilter;
+
+
             return (
                 actionMatches &&
-                tableMatches
+                tableMatches &&
+                actorMatches &&
+                flagMatches
             );
-        }
-    );
+        });
+    }, [
+        logs,
+        actionFilter,
+        tableFilter,
+        actorFilter,
+        flagFilter,
+    ]);
 
 
     const formatDate = (timestamp) => {
@@ -126,9 +189,7 @@ function AuditLogs() {
 
                 <button
                     className="refresh-button"
-                    onClick={
-                        loadAuditLogs
-                    }
+                    onClick={loadAuditLogs}
                 >
                     Refresh
                 </button>
@@ -138,31 +199,26 @@ function AuditLogs() {
 
             <div className="audit-filters">
 
+                {/* Action */}
+
                 <div>
                     <label>
                         Action
                     </label>
 
                     <select
-                        value={
-                            actionFilter
-                        }
+                        value={actionFilter}
                         onChange={(event) =>
                             setActionFilter(
-                                event.target
-                                    .value
+                                event.target.value
                             )
                         }
                     >
                         {actions.map(
                             (action) => (
                                 <option
-                                    key={
-                                        action
-                                    }
-                                    value={
-                                        action
-                                    }
+                                    key={action}
+                                    value={action}
                                 >
                                     {action ===
                                     "ALL"
@@ -175,36 +231,95 @@ function AuditLogs() {
                 </div>
 
 
+                {/* Table */}
+
                 <div>
                     <label>
                         Table
                     </label>
 
                     <select
-                        value={
-                            tableFilter
-                        }
+                        value={tableFilter}
                         onChange={(event) =>
                             setTableFilter(
-                                event.target
-                                    .value
+                                event.target.value
                             )
                         }
                     >
                         {tables.map(
                             (table) => (
                                 <option
-                                    key={
-                                        table
-                                    }
-                                    value={
-                                        table
-                                    }
+                                    key={table}
+                                    value={table}
                                 >
                                     {table ===
                                     "ALL"
                                         ? "All Tables"
                                         : table}
+                                </option>
+                            )
+                        )}
+                    </select>
+                </div>
+
+
+                {/* Actor */}
+
+                <div>
+                    <label>
+                        Actor
+                    </label>
+
+                    <select
+                        value={actorFilter}
+                        onChange={(event) =>
+                            setActorFilter(
+                                event.target.value
+                            )
+                        }
+                    >
+                        {actors.map(
+                            (actor) => (
+                                <option
+                                    key={actor}
+                                    value={actor}
+                                >
+                                    {actor ===
+                                    "ALL"
+                                        ? "All Actors"
+                                        : actor}
+                                </option>
+                            )
+                        )}
+                    </select>
+                </div>
+
+
+                {/* Flag */}
+
+                <div>
+                    <label>
+                        Flag
+                    </label>
+
+                    <select
+                        value={flagFilter}
+                        onChange={(event) =>
+                            setFlagFilter(
+                                event.target.value
+                            )
+                        }
+                    >
+                        {flags.map(
+                            (flag) => (
+                                <option
+                                    key={flag}
+                                    value={flag}
+                                >
+                                    {flag ===
+                                    "ALL"
+                                        ? "All Flags"
+                                        : flag}
                                 </option>
                             )
                         )}
@@ -245,7 +360,9 @@ function AuditLogs() {
                         <table className="audit-table">
 
                             <thead>
+
                                 <tr>
+
                                     <th>
                                         Timestamp
                                     </th>
@@ -259,6 +376,14 @@ function AuditLogs() {
                                     </th>
 
                                     <th>
+                                        Flag
+                                    </th>
+
+                                    <th>
+                                        Environment
+                                    </th>
+
+                                    <th>
                                         Table
                                     </th>
 
@@ -269,7 +394,9 @@ function AuditLogs() {
                                     <th>
                                         Changes
                                     </th>
+
                                 </tr>
+
                             </thead>
 
 
@@ -298,6 +425,7 @@ function AuditLogs() {
 
 
                                             <td>
+
                                                 <span
                                                     className={`audit-action audit-action-${log.action.toLowerCase()}`}
                                                 >
@@ -305,6 +433,23 @@ function AuditLogs() {
                                                         log.action
                                                     }
                                                 </span>
+
+                                            </td>
+
+
+                                            <td>
+                                                {
+                                                    log.flag_key ||
+                                                    "Unknown"
+                                                }
+                                            </td>
+
+
+                                            <td>
+                                                {
+                                                    log.environment ||
+                                                    "Unknown"
+                                                }
                                             </td>
 
 
@@ -323,10 +468,13 @@ function AuditLogs() {
 
 
                                             <td>
+
                                                 <details>
+
                                                     <summary>
                                                         View changes
                                                     </summary>
+
 
                                                     <div className="audit-change-section">
 
@@ -360,6 +508,7 @@ function AuditLogs() {
                                                     </div>
 
                                                 </details>
+
                                             </td>
 
                                         </tr>
