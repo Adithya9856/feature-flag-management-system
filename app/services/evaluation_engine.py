@@ -194,14 +194,16 @@ def evaluate_flag(
 
     # Use the flag's default configuration
     result = {
-        "success": True,
-        "environment": environment.name,
-        "flag": flag.flag_key,
-        "type": flag.flag_type,
-        "enabled": flag.enabled,
-        "value": flag.default_value,
-        "user_context": user_context,
-    }
+    "success": True,
+    "environment": environment.name,
+    "flag": flag.flag_key,
+    "type": flag.flag_type,
+    "enabled": flag.enabled,
+    "value": flag.default_value,
+    "reason": "Default evaluation",
+    "user_context": user_context,
+}
+    
 
     # Cache the default result for 5 minutes
     redis_client.set(

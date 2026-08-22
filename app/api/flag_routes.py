@@ -7,7 +7,8 @@ from app.database.connection import get_db
 from app.models.flag import Flag
 from app.models.environment import Environment
 from app.models.targeting_rule import TargetingRule
-
+from app.models.audit_log import AuditLog
+from app.models.evaluation_analytics import EvaluationAnalytics
 from app.schemas.flag import FlagCreate, FlagUpdate
 from app.schemas.environment import EnvironmentCreate, EnvironmentUpdate
 from app.schemas.targeting_rule import (
@@ -611,4 +612,35 @@ def get_cleanup_candidates(
             days=days,
         ),
     }
-    
+# Evaluation analytics
+@router.get("/evaluation-analytics")
+def get_evaluation_analytics(
+    db: Session = Depends(get_db),
+):
+    analytics = (
+        db.query(EvaluationAnalytics)
+        .order_by(EvaluationAnalytics.evaluation_hour.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": item.id,
+            "flag_key": item.flag_key,
+            "environment_name": item.environment_name,
+            "evaluation_hour": item.evaluation_hour,
+            "evaluation_count": item.evaluation_count,
+        }
+        for item in analytics
+    ]
+@router.get("/audit-logs")
+def get_audit_logs(
+    db: Session = Depends(get_db),
+):
+    logs = (
+        db.query(AuditLog)
+        .order_by(AuditLog.timestamp.desc())
+        .all()
+    )
+
+    return logs
